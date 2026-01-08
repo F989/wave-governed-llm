@@ -1,0 +1,4 @@
+# Add runtime dependencies here, e.g.
+# numpy
+# torch
+numpy>=1.24
