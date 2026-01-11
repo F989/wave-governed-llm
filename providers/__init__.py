@@ -1,2 +1,3 @@
 from .echo_provider import EchoProvider
-from .base import LLMAnswer, LLMProvider
+from .base import LLMResponse, LLMProvider
+

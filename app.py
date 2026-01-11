@@ -2,6 +2,7 @@ import numpy as np
 
 from pipeline import run_case
 from providers.echo_provider import EchoProvider
+from providers.openai_provider import OpenAIProvider
 
 
 def _r(x):
@@ -50,8 +51,10 @@ def print_result(title: str, res):
         print("missing:", res.output["missing"])
 
 
-def main():
-    provider = EchoProvider()   # ✅ modular provider (can be swapped)
+def run_suite(provider):
+    print("\n" + "#" * 80)
+    print("RUNNING WITH PROVIDER:", provider.__class__.__name__, "| model:", getattr(provider, "model", None))
+    print("#" * 80)
 
     masks = {
         "soft": np.array([0.9, 0.8, 0.7, 0.6, 0.5]),
@@ -59,6 +62,7 @@ def main():
         "hard": np.array([0.3, 0.1, 0.0, 0.0, 0.0]),
     }
 
+    # Case 1: with evidence
     user_text = "Write a rejection note with actionable feedback."
     evidence = [
         "Role requires strong SQL and stakeholder communication.",
@@ -75,7 +79,7 @@ def main():
         )
         print_result(f"CASE: {name.upper()} mask (with evidence)", res)
 
-    # PROJECT -> Q (ambiguous)
+    # Case 2: PROJECT -> Q (ambiguous)
     res_q = run_case(
         user_text="it?",
         evidence=[],
@@ -85,7 +89,7 @@ def main():
     )
     print_result("CASE: hard mask + ambiguous user_text (PROJECT -> Q)", res_q)
 
-    # PROJECT -> U (no evidence)
+    # Case 3: PROJECT -> U (no evidence)
     res_u = run_case(
         user_text="Tell me the capital of France.",
         evidence=[],
@@ -95,21 +99,33 @@ def main():
     )
     print_result("CASE: hard mask + no evidence (PROJECT -> U)", res_u)
 
-    # Minimal evidence moves off PROJECT
-    minimal_ev = [ "Source: Britannica: The capital of France is Paris.",
-  "Paris is the political and administrative capital of France."]
+    # Case 4: minimal evidence (CRISPR)
+    minimal_ev = [
+        "Source: WHO (2021): Human germline genome editing is considered unethical at this time; calls for strong governance and broad societal consensus before any clinical use.",
+        "Source: NASEM (2017): Germline editing might be permissible only under very strict conditions (serious disease, no reasonable alternatives, rigorous oversight) and is not ready for routine clinical use."
+    ]
+
     res_ev = run_case(
-        user_text="Tell me the capital of France.",
+        user_text="Based on current research, should CRISPR be used for human germline editing, and what are the long-term societal risks?",
         evidence=minimal_ev,
         mask=masks["hard"],
         seed=0,
         provider=provider,
     )
-    print_result("CASE: hard mask + minimal evidence (should move off PROJECT)", res_ev)
+    print_result("CASE: hard mask + minimal evidence (CRISPR germline)", res_ev)
+
+
+def main():
+    # Run with EchoProvider (offline / deterministic)
+    run_suite(EchoProvider())
+
+    # Run with OpenAIProvider (real LLM)
+    run_suite(OpenAIProvider())
 
 
 if __name__ == "__main__":
     main()
+
 
 
 

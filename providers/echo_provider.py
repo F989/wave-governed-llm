@@ -1,37 +1,37 @@
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional
-from .base import LLMAnswer
+from typing import List
+
+from .base import LLMProvider, LLMResponse
+
 
 @dataclass
-class EchoProvider:
+class EchoProvider(LLMProvider):
     """
-    Safe default provider for GitHub:
-    - No external API keys
-    - Demonstrates evidence-gated behavior
+    Minimal provider for debugging:
+    returns a response that echoes the user request + evidence.
     """
+
     name: str = "echo"
 
-    def answer(self, user_text: str, evidence: List[str], damping: float) -> LLMAnswer:
-        if not evidence:
-            return LLMAnswer(
-                text="No evidence provided → governed system will not generate an answer.",
-                citations=[],
-                meta={"mode": "blocked_no_evidence"}
-            )
+    def answer(self, user_text: str, evidence: List[str], damping: float) -> LLMResponse:
+        mode = "FREE" if damping == 0 else f"DAMPEN(damping={damping:.3f})"
 
         lines = []
-        mode = "FREE" if damping == 0 else "DAMPEN"
-        lines.append(f"- Governance mode: {mode} (damping={damping:.3f})")
+        lines.append(f"- Governance mode: {mode}")
         lines.append(f"- User request: {user_text}")
+
         lines.append("- Evidence summary:")
-        for i, e in enumerate(evidence, start=1):
-            lines.append(f"  [{i}] {e}")
+        if evidence:
+            for i, e in enumerate(evidence, 1):
+                lines.append(f"  [{i}] {e}")
+        else:
+            lines.append("  (none)")
 
         lines.append("- Response:")
-        if damping > 0.40:
-            lines.append("  Evidence is partial → returning a minimal, cautious response. Add stronger evidence for detail.")
-        else:
+        if evidence:
             lines.append("  Evidence is sufficient → returning a fuller response bounded by the evidence above.")
+        else:
+            lines.append("  Evidence is missing → cannot answer beyond stating what is missing.")
 
-        citations = [f"[{i}]" for i in range(1, len(evidence) + 1)]
-        return LLMAnswer(text="\n".join(lines), citations=citations, meta={"provider": self.name})
+        return LLMResponse(text="\n".join(lines), citations=evidence)
+

@@ -1,14 +1,21 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import List, Protocol, Optional, Dict, Any
+from typing import List, Protocol
+
 
 @dataclass
-class LLMAnswer:
+class LLMResponse:
     text: str
     citations: List[str]
-    meta: Optional[Dict[str, Any]] = None
+
 
 class LLMProvider(Protocol):
-    name: str
-    def answer(self, user_text: str, evidence: List[str], damping: float) -> LLMAnswer: ...
+    """
+    Provider interface.
+    Any model (OpenAI/Ollama/Gemini/Echo) should implement this.
+    """
+    def answer(self, user_text: str, evidence: List[str], damping: float) -> LLMResponse:
+        ...
+
 
