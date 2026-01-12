@@ -1,27 +1,55 @@
 # wave-governed-llm
 
-Evidence-gated governance for language models, inspired by wave physics and energy dissipation.
+Evidence-gated governance for language models, inspired by wave physics,
+energy dissipation, and action-level safety.
 
-This project explores a **fail-closed control layer for LLMs** that decides **whether a model is allowed to answer** and **how cautiously**, based on evidence strength and ambiguity — instead of filtering or correcting outputs after generation.
+This project explores a **fail-closed control layer for LLMs** that decides:
+
+- **whether a model is allowed to answer**
+- **how cautiously it should answer**
+- **whether an action is allowed at all**
+
+based on **evidence strength, ambiguity, and intended actions** —  
+*before* any generation occurs.
 
 ---
 
 ## Motivation
 
-Large language models often hallucinate when evidence is weak, missing, or the request is ambiguous.  
-Most mitigation approaches attempt to fix this *after* text is generated.
+Large language models often hallucinate or behave unsafely when:
+
+- evidence is weak or missing
+- the request is ambiguous
+- the model is implicitly allowed to take actions it should not
+
+Most mitigation approaches attempt to fix this *after* text is generated
+(using filters, rewriters, or post-hoc moderation).
 
 This project takes a different approach:
 
-> **Do not generate unless the system is confident it should.**
+> **Do not generate unless the system is confident it should.**  
+> **Do not act unless the action itself is allowed.**
 
-Generation is *permissioned*, not corrected.
+Generation and actions are **permissioned**, not corrected.
 
 ---
 
-## Governance States
+## Core Ideas
 
-Each request is routed into one of three states:
+1. **Evidence-first governance**  
+   Confidence is derived from *evidence*, not model confidence.
+
+2. **Fail-closed by design**  
+   When in doubt → do less, ask, or refuse.
+
+3. **Policy governs actions, not text**  
+   Safety is enforced at the *intent/action level*, not by filtering words.
+
+---
+
+## Governance States (Evidence Layer)
+
+Each request is routed into one of three high-level states:
 
 - 🟢 **FREE** — strong evidence  
   → full response allowed
@@ -32,20 +60,16 @@ Each request is routed into one of three states:
 - 🔴 **PROJECT** — no evidence or ambiguous query  
   → ask for clarification (**Q**) or return unknown (**U**)
 
-This makes the system **fail-closed by design**.
+This layer controls *whether* the model may respond and *how strongly*.
 
 ---
 
-## How It Works (High Level)
+## Action Gateway (Policy Layer)
 
-1. **Evidence scoring**  
-   `evidence_score()` assigns a score ∈ [0,1] based on:
-   - quantity of evidence
-   - relevance to user intent
-   - concreteness
+After evidence-based gating, requests pass through an **Action Gateway**
+that decides whether the **intended action itself is allowed**.
 
-2. **Energy computation**
-   ```text
-   rho_text = 1 - evidence_score
-   rho = blend(rho_text, rho_mask)
+### High-level flow
+
+
 
