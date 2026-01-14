@@ -1,4 +1,6 @@
 # pipeline.py
+from __future__ import annotations
+
 import numpy as np
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
@@ -31,6 +33,8 @@ def run_case(
     mask: Optional[np.ndarray] = None,
     seed: int = 0,
     provider: Optional[LLMProvider] = None,
+    allow_writes: bool = False,
+    allow_external_send: bool = False,
 ) -> RunResult:
     evidence = evidence or []
     np.random.seed(seed)
@@ -66,14 +70,13 @@ def run_case(
     values = np.random.randn(n_keys, d)
 
     if gd.mode != "PROJECT":
-        out, w, _scores = governed_attention(C, keys, values, gd.damping)
+        _out, w, _scores = governed_attention(C, keys, values, gd.damping)
         att = {
             "entropy": entropy(w),
             "max_weight": max_weight(w),
             "weights": np.round(w, 3).tolist(),
         }
     else:
-        out, w = None, None
         att = {"entropy": None, "max_weight": None, "weights": None}
 
     if gd.mode != "PROJECT":
@@ -88,10 +91,7 @@ def run_case(
         out1, w1, _ = governed_attention(S1, keys, values, gd.damping)
         out2, w2, _ = governed_attention(S2, keys, values, gd.damping)
 
-        interference = {
-            "I_out": l2(out1, out2),
-            "I_w": l2(w1, w2),
-        }
+        interference = {"I_out": l2(out1, out2), "I_w": l2(w1, w2)}
     else:
         interference = {"I_out": None, "I_w": None}
 
@@ -102,7 +102,8 @@ def run_case(
         provider = EchoProvider()
 
     # -------------------------
-    # ✅ ALWAYS: Plan → Monitor → Policy (even if PROJECT)
+    # ALWAYS: Plan → Monitor → Policy
+    # Policy ENFORCES always (if deny => BLOCKED), telemetry always present.
     # -------------------------
     plan_dict = None
     monitor_dict = None
@@ -121,10 +122,14 @@ def run_case(
         report = monitor(plan)
         monitor_dict = {"risk_flags": report.risk_flags}
 
-        pol = evaluate_policy(report)  # policy expects MonitorResult
+        # IMPORTANT: pass allow knobs into policy
+        pol = evaluate_policy(
+            report,
+            allow_writes=allow_writes,
+            allow_external_send=allow_external_send,
+        )
         policy_dict = {"allow": pol.allow, "reasons": pol.reasons}
 
-        # Fail-closed: if policy blocks -> return BLOCKED immediately
         if not pol.allow:
             output = {
                 "state": "BLOCKED",
@@ -133,7 +138,6 @@ def run_case(
                 "plan": plan_dict,
                 "monitor": monitor_dict,
             }
-
             metrics = {
                 "rho_energy": rho,
                 "rho_text": rho_text,
@@ -146,7 +150,6 @@ def run_case(
                 "behavior_monitor": monitor_dict,
                 "policy": policy_dict,
             }
-
             return RunResult(
                 decision={"mode": gd.mode, "damping": gd.damping, "project_state": gd.state},
                 metrics=metrics,
@@ -154,7 +157,7 @@ def run_case(
             )
 
     except Exception as e:
-        # Fail-closed: if gate crashes -> block
+        # Fail-closed: if gate crashes -> block (prevents accidental provider call)
         output = {
             "state": "BLOCKED",
             "text": f"Policy gate error: {type(e).__name__}: {e}",
@@ -179,14 +182,10 @@ def run_case(
         )
 
     # -------------------------
-    # If governor projects, return that (but with policy telemetry present)
+    # Governor output (only reached if policy allowed)
     # -------------------------
     if gd.mode == "PROJECT":
-        output = {
-            "state": gd.state,
-            "text": gd.message,
-            "missing": gd.missing,
-        }
+        output = {"state": gd.state, "text": gd.message, "missing": gd.missing}
     else:
         ans = provider.answer(user_text, evidence, gd.damping)
         output = {
@@ -213,8 +212,9 @@ def run_case(
     return RunResult(
         decision={"mode": gd.mode, "damping": gd.damping, "project_state": gd.state},
         metrics=metrics,
-        output=output
+        output=output,
     )
+
 
 
 

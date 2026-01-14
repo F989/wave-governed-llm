@@ -1,16 +1,11 @@
-from __future__ import annotations
 from dataclasses import dataclass
-from typing import List, Literal
-
+from typing import List
 from behavior_monitor import MonitorResult
-
-Policy = Literal["allow", "human_review", "block"]
 
 @dataclass
 class PolicyDecision:
-    decision: Policy
+    allow: bool
     reasons: List[str]
-
 
 def evaluate_policy(
     monitor_result: MonitorResult,
@@ -20,24 +15,22 @@ def evaluate_policy(
     reasons: List[str] = []
     flags = set(monitor_result.risk_flags)
 
-    # ❌ Hard blocks
     if "external_send" in flags and not allow_external_send:
-        reasons.append("External send is not allowed")
-        return PolicyDecision(decision="block", reasons=reasons)
+        reasons.append("Blocked: external send not allowed")
 
-    if "writes_state" in flags and not allow_writes:
-        reasons.append("Write/state changes are not allowed")
-        return PolicyDecision(decision="block", reasons=reasons)
+    if "writes_state" in flags or "write_action" in flags:
+        if not allow_writes:
+            reasons.append("Blocked: write/state changes not allowed")
+
+    if "sensitive_data" in flags:
+        reasons.append("Sensitive data access requires human approval")
 
     if "too_many_actions" in flags:
         reasons.append("Too many actions without approval")
-        return PolicyDecision(decision="block", reasons=reasons)
 
-    # 🧍 Human-in-the-loop
-    if "sensitive_data" in flags:
-        reasons.append("Sensitive data access requires human approval")
-        return PolicyDecision(decision="human_review", reasons=reasons)
+    return PolicyDecision(
+        allow=(len(reasons) == 0),
+        reasons=reasons
+    )
 
-    # ✅ Safe
-    return PolicyDecision(decision="allow", reasons=[])
 

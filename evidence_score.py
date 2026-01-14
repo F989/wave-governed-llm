@@ -25,16 +25,20 @@ AUTHORITY_TOKENS = {
     "springer", "elsevier", "oxford", "cambridge", "arxiv"
 }
 
-# Internal evidence markers (HR / interview workflows)
+# ✅ expanded: internal HR / interview workflows + common phrasing
 INTERNAL_SOURCE_RE = re.compile(
-    r"\b(interview notes?|hiring notes?|scorecard|rubric|role requires|job description|"
-    r"\bjd\b|panel feedback|assessment|take[- ]home|case study)\b",
+    r"\b("
+    r"interview notes?|hiring notes?|scorecard|rubric|role requires|role need[s]?|job description|"
+    r"\bjd\b|panel feedback|assessment|take[- ]home|case study|"
+    r"stakeholder|product sense|tradeoffs?|candidate|sql tasks?"
+    r")\b",
     re.IGNORECASE
 )
 
 # Intent detectors
 INTENT_FEEDBACK_RE = re.compile(
-    r"\b(rejection|reject|feedback|actionable|improve|strengths?|gaps?|areas to improve)\b",
+    r"\b(rejection|reject|feedback|actionable|improve|strengths?|gaps?|areas to improve|"
+    r"interview|candidate|hiring)\b",
     re.IGNORECASE
 )
 
@@ -114,7 +118,6 @@ def _count_unique_sources(evidence: List[str]) -> int:
                 seen.add(("auth", tok))
 
         if INTERNAL_SOURCE_RE.search(e):
-            # treat internal artifacts as a distinct “source type”
             seen.add(("internal", "hr_artifact"))
 
     return len(seen)
@@ -139,9 +142,14 @@ def _relevance_score(user_text: str, evidence: List[str]) -> float:
     u_low = user_text.lower()
     joined = " ".join(evidence).lower()
 
-    # feedback intent: interview artifacts are relevant even without overlap
-    if INTENT_FEEDBACK_RE.search(u_low) and INTERNAL_SOURCE_RE.search(joined):
-        return 0.90
+    # ✅ feedback intent: accept HR-like evidence even without token overlap
+    if INTENT_FEEDBACK_RE.search(u_low):
+        internal_like = bool(INTERNAL_SOURCE_RE.search(joined))
+        if internal_like:
+            return 0.90
+        # fallback: if there are at least 2 evidence items, treat as moderately relevant
+        if len(evidence) >= 2:
+            return 0.70
 
     # factoid intent: keep strict overlap
     if INTENT_FACTOID_RE.search(u_low):
@@ -192,7 +200,6 @@ def _concreteness_score(user_text: str, evidence: List[str]) -> Tuple[float, Dic
 
     unique_src = _count_unique_sources(evidence)
 
-    # strong: classic citations
     strong = (
         0.35 * _clamp01(agg["doi"] > 0) +
         0.30 * _clamp01(agg["pmid"] > 0) +
@@ -201,7 +208,7 @@ def _concreteness_score(user_text: str, evidence: List[str]) -> Tuple[float, Dic
         0.05 * _clamp01(agg["isbn"] > 0)
     )
 
-    # NEW: treat internal HR evidence as "strong-ish" WHEN the user intent is feedback/rejection
+    # ✅ internal HR evidence counts as "strong-ish" when feedback intent
     u_low = user_text.lower()
     if INTENT_FEEDBACK_RE.search(u_low) and agg["internal"] > 0:
         strong = max(strong, 0.65)
@@ -216,7 +223,6 @@ def _concreteness_score(user_text: str, evidence: List[str]) -> Tuple[float, Dic
     )
 
     diversity = _clamp01(unique_src / 3.0)
-
     concrete = _clamp01(0.65 * strong + 0.25 * medium + 0.10 * diversity)
 
     reasons = []
@@ -266,6 +272,10 @@ def evidence_score(user_text: str, evidence: List[str]) -> Dict[str, Any]:
         0.15 * qty +
         0.10 * length
     )
+
+    # ✅ feedback floor: 2+ evidence items should not collapse to "no evidence"
+    if INTENT_FEEDBACK_RE.search(user_text.lower()) and len(evidence) >= 2:
+        score = max(score, 0.50)  # pushes governor to DAMPEN instead of PROJECT
 
     has_any_source_marker = (
         concrete_signals["counts"]["url"] > 0 or

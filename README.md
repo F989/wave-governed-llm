@@ -1,75 +1,68 @@
 # wave-governed-llm
 
-Evidence-gated governance for language models, inspired by wave physics,
-energy dissipation, and action-level safety.
+**Fail-closed governance + policy gating for LLM calls**, driven by evidence strength and simple action-risk heuristics.
 
-This project explores a **fail-closed control layer for LLMs** that decides:
+This repository is a learning-oriented prototype that demonstrates how to **block / dampen / request clarification** *before* calling an LLM, rather than trying to “fix” unsafe or hallucinated output after generation.
 
-- **whether a model is allowed to answer**
-- **how cautiously it should answer**
-- **whether an action is allowed at all**
-
-based on **evidence strength, ambiguity, and intended actions** —  
-*before* any generation occurs.
+> ⚠️ Important: The “wave / energy” terminology is **metaphorical** and used as an intuitive framing for **risk/uncertainty**.  
+> The current implementation does **not** simulate real physical wave dynamics, nor does it hook into real model attention weights.
 
 ---
 
-## Motivation
+## What the project does (today)
 
-Large language models often hallucinate or behave unsafely when:
+### ✅ 1) Evidence-gated governance (fail-closed)
+Given:
+- `user_text`
+- optional `evidence` (strings)
 
-- evidence is weak or missing
-- the request is ambiguous
-- the model is implicitly allowed to take actions it should not
+The pipeline computes an evidence score and routes each request into one of:
 
-Most mitigation approaches attempt to fix this *after* text is generated
-(using filters, rewriters, or post-hoc moderation).
+- **FREE** → allow full response
+- **DAMPEN** → allow response but with higher “caution”
+- **PROJECT** → do not answer; instead return:
+  - **Q** (ask clarification) if the request is ambiguous
+  - **U** (unknown / insufficient evidence) if evidence is missing
 
-This project takes a different approach:
+### ✅ 2) Action Gateway (Plan → Monitor → Policy)
+Before calling the provider/LLM, the system runs a lightweight “action-risk” gate:
 
-> **Do not generate unless the system is confident it should.**  
-> **Do not act unless the action itself is allowed.**
+1. **Planner**: creates a minimal `ActionPlan` from the user text  
+2. **Behavior Monitor**: assigns risk flags (e.g., `external_send`, `sensitive_data`, `writes_state`)  
+3. **Policy Engine**: converts flags into a decision:
+   - allow
+   - block
+   - (optional) require human approval
 
-Generation and actions are **permissioned**, not corrected.
+This is a **fail-closed** gate: if the policy blocks, the provider is not called.
 
----
-
-## Core Ideas
-
-1. **Evidence-first governance**  
-   Confidence is derived from *evidence*, not model confidence.
-
-2. **Fail-closed by design**  
-   When in doubt → do less, ask, or refuse.
-
-3. **Policy governs actions, not text**  
-   Safety is enforced at the *intent/action level*, not by filtering words.
-
----
-
-## Governance States (Evidence Layer)
-
-Each request is routed into one of three high-level states:
-
-- 🟢 **FREE** — strong evidence  
-  → full response allowed
-
-- 🟡 **DAMPEN** — partial or weak evidence  
-  → cautious, minimal response
-
-- 🔴 **PROJECT** — no evidence or ambiguous query  
-  → ask for clarification (**Q**) or return unknown (**U**)
-
-This layer controls *whether* the model may respond and *how strongly*.
+### ✅ 3) Smoke tests / scenarios
+Includes a small scenario runner that demonstrates:
+- benign request with evidence → allowed
+- exfil attempt (e.g., “send my API key…”) → blocked
+- vague request with no evidence → PROJECT (U/Q)
+- state-change request → blocked
 
 ---
 
-## Action Gateway (Policy Layer)
+## What the project does NOT do (yet)
 
-After evidence-based gating, requests pass through an **Action Gateway**
-that decides whether the **intended action itself is allowed**.
+### ❌ No real model introspection
+- No logits, hidden states, or real attention weights from a real model.
+- The `toy_attention` module uses random keys/values to visualize the effect of damping, but it is **not connected** to an LLM.
 
-### High-level flow
+### ❌ No tool execution sandbox
+- The policy gate is heuristic and string-based (for now).  
+- There is no real tool runtime with permission scopes, audit logs, or external connectors.
+
+### ❌ Not a production safety system
+This is a prototype for learning + demonstration. It is not a substitute for a real safety framework, threat modeling, or security review.
+
+---
+
+## How it works (high level)
+
+
 
 
 
